@@ -14,7 +14,7 @@ Official site
 
 MacType official site: 
 
-http://www.mactype.net (Currently down for unexpected reason, will be back soon)
+http://www.mactype.net (An archived version is restored)
 
 What's new?
 ------------------
