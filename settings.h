@@ -79,6 +79,8 @@ public:
 typedef map<CFontName,CFontSubResult> CFontNameCache;*/
 
 
+int _StrToInt(LPCTSTR pStr, int nDefault);
+
 class CFontSettings
 {
 private:
@@ -295,6 +297,7 @@ private:
 	DWORD m_nShadowDarkColor;
 	unsigned char m_arrLcdFilterWeights[5];
 	char m_arrPixelLayout[6];
+	set<int> m_nDisplayAffinity;	// screen affinity set for per-display rendering
 
 	//settings for experimental
 	bool m_bEnableClipBoxFix;
@@ -366,7 +369,6 @@ private:
 	bool AddIndividualFromSection(LPCTSTR lpszSection, LPCTSTR lpszFile, IndividualArray& arr);
 	bool AddLcdFilterFromSection(LPCTSTR lpszKey, LPCTSTR lpszFile, unsigned char* arr);
 	bool AddPixelModeFromSection(LPCTSTR lpszKey, LPCTSTR lpszFile, char* arr);
-	static int   _StrToInt(LPCTSTR pStr, int nDefault);
 	static float _StrToFloat(LPCTSTR pStr, float fDefault);
 	static int _httoi(const TCHAR *value);
 	void InitInitTuneTable();
@@ -497,6 +499,7 @@ public:
 	const int* GetTuneTableR() const { return m_nTuneTableR; }
 	const int* GetTuneTableG() const { return m_nTuneTableG; }
 	const int* GetTuneTableB() const { return m_nTuneTableB; }
+	set<int>& DisplayAffinity() { return m_nDisplayAffinity; }
 
 	bool LoadSettings(HINSTANCE hModule);
 
@@ -748,7 +751,7 @@ public:
 					break;
 				}
 				for (int i=0; i<3; i++) {
-					pSettings->m_nShadow[i] = pSettings->_StrToInt(token.GetArgument(i), 0);
+					pSettings->m_nShadow[i] = _StrToInt(token.GetArgument(i), 0);
 					/*if (m_nShadow[i] <= 0) {
 						goto SKIP;
 					}*/
@@ -761,7 +764,7 @@ public:
 				if (token.GetCount()>=6)	//如果指定了深色阴影
 				{
 					pSettings->m_nShadowLightColor = pSettings->_httoi(token.GetArgument(5));	//读取阴影
-					pSettings->m_nShadow[3] = pSettings->_StrToInt(token.GetArgument(4), pSettings->m_nShadow[2]); //读取深度
+					pSettings->m_nShadow[3] = _StrToInt(token.GetArgument(4), pSettings->m_nShadow[2]); //读取深度
 				}
 				else
 				{
@@ -910,7 +913,7 @@ public:
 				LPCTSTR arg = token.GetArgument(i);
 				if (!arg)
 					break;
-				const int n = pSettings->_StrToInt(arg, fsCommon.GetParam(i));
+				const int n = _StrToInt(arg, fsCommon.GetParam(i));
 				fs.SetParam(i, n);
 			}
 

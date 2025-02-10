@@ -150,10 +150,18 @@ static void hook_term()
 
 #else
 #include "easyhook.h"
+#ifdef STATIC_LIB
+#ifdef _M_IX86
+#pragma comment (lib, "easyhk32_s.lib")
+#else
+#pragma comment (lib, "easyhk64_s.lib")
+#endif
+#else
 #ifdef _M_IX86
 #pragma comment (lib, "easyhk32.lib")
 #else
 #pragma comment (lib, "easyhk64.lib")
+#endif
 #endif
 
 #define HOOK_MANUALLY HOOK_DEFINE
@@ -474,7 +482,7 @@ void EZHookMain(HINSTANCE instance, DWORD reason, LPVOID lpReserved) {
 		delete[]dllPath;
 		if (!hEasyhk) {
 			DebugOut(L"Failed to load Easyhook, exiting");
-			return false;
+			return;
 		}
 	}
 	}

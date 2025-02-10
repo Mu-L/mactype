@@ -14,7 +14,8 @@
 #pragma comment(lib, "Gdi32.lib")
 #pragma comment(lib, "User32.lib")
 #pragma comment(lib, "WindowsCodecs.lib")
-#pragma comment (lib, "dwrite.lib")
+#pragma comment(lib, "dwrite.lib")
+#pragma comment(lib, "uxtheme.lib")
 
 #if defined(_DEBUG)
 void Dbg_TractGetTextExtent(LPCSTR lpString, int cbString, LPSIZE lpSize);
@@ -44,6 +45,8 @@ typedef HRESULT (WINAPI* __DWriteCreateFactory)(
 
 CFontCache FontCache;
 CDCArray DCArray;
+CDCRelationCache DCRelation;
+//CPaintBufferCache PaintBufferCache;
 wstring nullstring;
 BOOL g_ccbRender = true;
 BOOL g_ccbCache = true;
@@ -1057,6 +1060,55 @@ public:
 	}
 };
 
+// extract the possibly largest integer from the string
+int StrToBestInt(const WCHAR* wstr) {
+	int result = 0;
+	const WCHAR* ptr = wstr;
+
+	while ((*ptr < L'0' || *ptr > L'9') && *ptr != L'\0') ++ptr;	// fast forward to the digits
+	// Process digits
+	while (*ptr >= L'0' && *ptr <= L'9') {
+		int digit = *ptr - L'0';
+
+		// Overflow check
+		if (result > (INT_MAX - digit) / 10) {
+			return -1; // Overflow
+		}
+
+		result = result * 10 + digit;
+		++ptr;
+	}
+
+	return result;
+}
+
+int DisplayFromDC(HDC dc) {
+	if (!dc) {
+		return -1;
+	}
+	CCriticalSectionLock __lock(CCriticalSectionLock::CS_DCRELATION);
+	// fetch realDC from memoryDC
+	auto it = DCRelation.find(dc);
+	if (it != DCRelation.end()) {
+		dc = it->second;
+	}
+	auto hwnd = WindowFromDC(dc);
+	if (hwnd) {
+		auto monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+		if (!monitor) return -1;	// Minimized window?
+
+		MONITORINFOEX mi;
+		mi.cbSize = sizeof(MONITORINFOEX);
+		GetMonitorInfo(monitor, &mi);
+		TRACE(L"Display name: %s\n", mi.szDevice);
+		return StrToBestInt(mi.szDevice);
+	}
+	else {
+		TRACE(L"!! Display not found: %d -------------\n", dc);
+	}
+	return -1;
+}
+
 extern ControlIder CID;
 // 取代Windows的ExtTextOutW
 BOOL WINAPI IMPL_ExtTextOutW(HDC hdc, int nXStart, int nYStart, UINT fuOptions, CONST RECT *lprc, LPCWSTR lpString, UINT cbString, CONST INT *SyslpDx)
@@ -1077,6 +1129,21 @@ BOOL WINAPI IMPL_ExtTextOutW(HDC hdc, int nXStart, int nYStart, UINT fuOptions, 
 
 	if (DCArray.find(hdc)!=DCArray.end())
 		return ORIG_ExtTextOutW(hdc, nXStart, nYStart, fuOptions, lprc, lpString, cbString, lpDx);
+
+	if (!(fuOptions & ETO_GLYPH_INDEX) && !(fuOptions & ETO_IGNORELANGUAGE) && !lpDx && CID.myiscomplexscript(lpString,cbString))		//complex script
+		return ORIG_ExtTextOutW(hdc, nXStart, nYStart, fuOptions, lprc, lpString, cbString, lpDx);
+	CGdippSettings* pSettings = CGdippSettings::GetInstance(); //获得一个配置文件实例
+
+	// check if per-display rendering is enabled
+	if (pSettings->DisplayAffinity().size()) {
+		set<int>& aff = pSettings->DisplayAffinity();
+		int id = DisplayFromDC(hdc);
+		if (id >= 0 && aff.find(id) == aff.end()) {
+			// display is not in the list, we should drop rendering for it.
+			return ORIG_ExtTextOutW(hdc, nXStart, nYStart, fuOptions, lprc, lpString, cbString, lpDx);
+		}
+	}
+
 	CAutoVectorPtr<INT> newdx;
 	if (!lpDx) {
 		newdx.Allocate(cbString);
@@ -1092,14 +1159,10 @@ BOOL WINAPI IMPL_ExtTextOutW(HDC hdc, int nXStart, int nYStart, UINT fuOptions, 
 			}
 			lpDx = newdx;
 		}
-		else{
+		else {
 			newdx.Free();
 		}
 	}
-
-	if (!(fuOptions & ETO_GLYPH_INDEX) && !(fuOptions & ETO_IGNORELANGUAGE) && !lpDx && CID.myiscomplexscript(lpString,cbString))		//complex script
-		return ORIG_ExtTextOutW(hdc, nXStart, nYStart, fuOptions, lprc, lpString, cbString, lpDx);
-	CGdippSettings* pSettings = CGdippSettings::GetInstance(); //获得一个配置文件实例
 
 /*
 
@@ -1678,7 +1741,72 @@ DWORD WINAPI IMPL_GetFontData(_In_ HDC     hdc,
 	return ret;
 }
 
+/*
+HPAINTBUFFER WINAPI IMPL_BeginBufferedPaint(
+	HDC hdcTarget,
+	const RECT* prcTarget,
+	BP_BUFFERFORMAT dwFormat,
+	BP_PAINTPARAMS* pPaintParams,
+	HDC* phdc
+) {
+	CCriticalSectionLock __lock(CCriticalSectionLock::CS_DCRELATION);
+	auto ret = ORIG_BeginBufferedPaint(hdcTarget, prcTarget, dwFormat, pPaintParams, phdc);
+	// save relations between memoryDC and realDC
+	if (phdc && *phdc && hdcTarget) {
+		PaintBufferCache[ret] = *phdc;
+		// unchain dc relations
+		auto it = DCRelation.find(hdcTarget);
+		if (it != DCRelation.end()) {
+			TRACE(L"BeginBufferedPaint %d->%d->%d", *phdc, hdcTarget, it->second);
+			hdcTarget = it->second;
+		}
+		else {
+			TRACE(L"BeginBufferedPaint: %d->%d\n", *phdc, hdcTarget);
+		}
+		DCRelation[*phdc] = hdcTarget;
+	}
+	return ret;
+}
 
+HRESULT WINAPI IMPL_EndBufferedPaint(HPAINTBUFFER hBufferedPaint, BOOL fUpdateTarget) {
+	CCriticalSectionLock __lock(CCriticalSectionLock::CS_DCRELATION);
+	auto it = PaintBufferCache.find(hBufferedPaint);
+	// remove obsolete DC relations
+	if (it != PaintBufferCache.end()) {
+		TRACE(L"EndBufferedPaint %d", it->second);
+		DCRelation.erase(it->second);
+		PaintBufferCache.erase(it);
+	}
+	return ORIG_EndBufferedPaint(hBufferedPaint, fUpdateTarget);
+}
+*/
 
+HDC WINAPI IMPL_CreateCompatibleDC(_In_opt_ HDC hdc) {
+	auto memdc = ORIG_CreateCompatibleDC(hdc);
+	if (memdc && hdc) {
+		CCriticalSectionLock __lock(CCriticalSectionLock::CS_DCRELATION);
+		// unchain dc relations
+		auto it = DCRelation.find(hdc);
+		if (it != DCRelation.end()) {
+			TRACE(L"CreateCompatibleDC: %d->%d->%d\n", memdc, hdc, it->second);
+			hdc = it->second;
+		}
+		else {
+			TRACE(L"CreateCompatibleDC: %d->%d\n", memdc, hdc);
+		}
+		DCRelation[memdc] = hdc;
+	}
+	return memdc;
+}
+
+BOOL WINAPI IMPL_DeleteDC(_In_ HDC hdc) {
+	auto ret = ORIG_DeleteDC(hdc);
+	if (ret) {
+		CCriticalSectionLock __lock(CCriticalSectionLock::CS_DCRELATION);
+		DCRelation.erase(hdc);
+		TRACE(L"DeleteDC %d", hdc);
+	}
+	return ret;
+}
 
 //EOF

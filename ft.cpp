@@ -1960,7 +1960,7 @@ BOOL ForEachGetGlyphFT(FreeTypeDrawInfo& FTInfo, LPCTSTR lpString, int cbString,
 			if (bVertical && IsVerticalChar(wch)) {
 				FTInfo.font_type.flags |= FT_LOAD_VERTICAL_LAYOUT;
 				if (bLcdMode) {
-					if (FTInfo.font_type.flags&FT_LOAD_TARGET_LCD == FT_LOAD_TARGET_LCD) {
+					if ((FTInfo.font_type.flags&FT_LOAD_TARGET_LCD) == FT_LOAD_TARGET_LCD) {
 						FTInfo.font_type.flags &= ~FT_LOAD_TARGET_LCD;
 						FTInfo.font_type.flags |= FT_LOAD_TARGET_LCD_V;
 					}

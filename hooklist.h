@@ -4,6 +4,23 @@ HOOK_DEFINE(int, GetTextFaceAliasW, (HDC hdc, int nLen, LPWSTR lpAliasW), (hdc, 
 HOOK_DEFINE(BOOL, DeleteObject, ( HGDIOBJ hObject),(hObject))
 HOOK_DEFINE(int, GetTextFaceW, ( __in HDC hdc, __in int c, __out_ecount_part_opt(c, return)  LPWSTR lpName), (hdc, c, lpName))
 HOOK_DEFINE(int, GetTextFaceA, ( __in HDC hdc, __in int c, __out_ecount_part_opt(c, return)  LPSTR lpName), (hdc, c, lpName))
+// dc->window detection helper
+HOOK_DEFINE(HDC, CreateCompatibleDC, (_In_opt_ HDC hdc), (hdc))
+HOOK_DEFINE(BOOL, DeleteDC, (_In_ HDC hdc), (hdc))
+/*
+* BeginBufferedPaint calls CreateCompatibleDC internally
+HOOK_DEFINE(HPAINTBUFFER, BeginBufferedPaint, (
+			HDC hdcTarget,
+			const RECT * prcTarget,
+			BP_BUFFERFORMAT dwFormat,
+			BP_PAINTPARAMS * pPaintParams,
+			HDC * phdc
+	), (hdcTarget, prcTarget, dwFormat, pPaintParams, phdc))
+HOOK_DEFINE(HRESULT, EndBufferedPaint, (
+			HPAINTBUFFER hBufferedPaint,
+			BOOL fUpdateTarget
+		), (hBufferedPaint, fUpdateTarget))
+*/
 HOOK_DEFINE(DWORD, GetGlyphOutlineW, (    __in HDC hdc, \
 			__in UINT uChar, \
 			__in UINT fuFormat, \

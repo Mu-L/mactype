@@ -52,6 +52,8 @@ public:
 
 typedef map<HFONT, CFontSubResult*> CFontCache;
 typedef set<HDC> CDCArray;
+typedef map<HDC, HDC> CDCRelationCache;
+typedef map<HPAINTBUFFER, HDC> CPaintBufferCache;
 
 class CThreadLocalInfo
 {

@@ -15,6 +15,7 @@
 
 #define NOMINMAX
 #include <Windows.h>
+#include <Uxtheme.h>
 #include <usp10.h>
 //#include <limits>
 #include <functional>
@@ -134,6 +135,7 @@ public:
 		CS_OWNEDCS,
 		CS_VIRTMEM,
 		CS_DWRITE,
+		CS_DCRELATION,
 	};
 	CCriticalSectionLock(int index=CS_LIBRARY):
 	  m_index(index)

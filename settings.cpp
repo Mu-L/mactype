@@ -15,9 +15,58 @@ inline BOOL IsFolder(LPCTSTR pszPath) {
 	return pszPath && *pszPath && *(pszPath + wcslen(pszPath) - 1) == '\\';
 }
 
+int _StrToInt(LPCTSTR pStr, int nDefault)
+{
+#define isspace(ch)		(ch == _T('\t') || ch == _T(' '))
+#define isdigit(ch)		((_TUCHAR)(ch - _T('0')) <= 9)
+
+	int ret;
+	bool neg = false;
+	LPCTSTR pStart;
+
+	for (; isspace(*pStr); pStr++);
+	switch (*pStr) {
+	case _T('-'):
+		neg = true;
+	case _T('+'):
+		pStr++;
+		break;
+	}
+
+	pStart = pStr;
+	ret = 0;
+	for (; isdigit(*pStr); pStr++) {
+		ret = 10 * ret + (*pStr - _T('0'));
+	}
+
+	if (pStr == pStart) {
+		return nDefault;
+	}
+	return neg ? -ret : ret;
+
+#undef isspace
+#undef isdigit
+}
+
 wstring LowerCase(wstring str) {
 	transform(str.begin(), str.end(), str.begin(), ::tolower);
 	return str;
+}
+
+// split a comma separated string into an int vector
+vector<int> SplitString(LPCTSTR str) {
+	CStringTokenizer token;
+	vector<int> intList;
+	int argc = 0;
+	argc = token.Parse(str);
+
+	for (int i = 0; i < 6; i++) {
+		LPCTSTR arg = token.GetArgument(i);
+		if (!arg)
+			break;
+		intList.push_back(_StrToInt(arg, 0));
+	}
+	return intList;
 }
 
 const wstring GetAppDir() {
@@ -587,12 +636,7 @@ SKIP:
 													 SETTING_FONTSUBSTITUTE_ALL,
 													 lpszFile);
 	m_nWidthMode = SETTING_WIDTHMODE_GDI32;
-/*
-	_GetFreeTypeProfileBoundInt(_T("WidthMode"),
-											   SETTING_WIDTHMODE_GDI32,
-											   SETTING_WIDTHMODE_GDI32,
-											   SETTING_WIDTHMODE_FREETYPE,
-											   lpszFile);*/
+	
 
 	m_nFontLoader = _GetFreeTypeProfileBoundInt(_T("FontLoader"),
 												SETTING_FONTLOADER_FREETYPE,
@@ -603,6 +647,16 @@ SKIP:
 	m_nCacheMaxFaces = m_nCacheMaxFaces > 64 ? m_nCacheMaxFaces : 64;
 	m_nCacheMaxSizes = _GetFreeTypeProfileInt(_T("CacheMaxSizes"), 1200, lpszFile);
 	m_nCacheMaxBytes = _GetFreeTypeProfileInt(_T("CacheMaxBytes"), 10485760, lpszFile);
+
+	//parse display affinity string into an integer set
+	{
+		TCHAR sAffinity[260] = { 0 };
+		_GetFreeTypeProfileString(_T("DisplayAffinity"), _T(""), sAffinity, 256, lpszFile);
+		auto displays = SplitString(sAffinity);
+		for (auto id : displays) {
+			m_nDisplayAffinity.insert(id);
+		}
+	}
 
 	//experimental settings:
 	m_bEnableClipBoxFix = !!_GetFreeTypeProfileIntFromSection(_T("Experimental"), _T("ClipBoxFix"), 1, lpszFile);
@@ -892,40 +946,6 @@ bool CGdippSettings::AddIndividualFromSection(LPCTSTR lpszSection, LPCTSTR lpszF
 LPTSTR CGdippSettings::_GetPrivateProfileSection(LPCTSTR lpszSection, LPCTSTR lpszFile)
 {
 	return const_cast<LPTSTR>((LPCTSTR)m_Config[lpszSection]);
-}
-
-//atolにデフォルト値を返せるようにしたような物
-int CGdippSettings::_StrToInt(LPCTSTR pStr, int nDefault)
-{
-#define isspace(ch)		(ch == _T('\t') || ch == _T(' '))
-#define isdigit(ch)		((_TUCHAR)(ch - _T('0')) <= 9)
-
-	int ret;
-	bool neg = false;
-	LPCTSTR pStart;
-
-	for (; isspace(*pStr); pStr++);
-	switch (*pStr) {
-	case _T('-'):
-		neg = true;
-	case _T('+'):
-		pStr++;
-		break;
-	}
-
-	pStart = pStr;
-	ret = 0;
-	for (; isdigit(*pStr); pStr++) {
-		ret = 10 * ret + (*pStr - _T('0'));
-	}
-
-	if (pStr == pStart) {
-		return nDefault;
-	}
-	return neg ? -ret : ret;
-
-#undef isspace
-#undef isdigit
 }
 
 int CGdippSettings::_httoi(const TCHAR *value)
@@ -1562,7 +1582,7 @@ bool CFontSubstituteData::initnocheck(LPCTSTR config) {
 	}
 	if (p >= buf) {
 		StringCchCopy(m_lf.lfFaceName, countof(m_lf.lfFaceName), buf);
-		m_lf.lfCharSet = (BYTE)CGdippSettings::_StrToInt(p + 1, 0);
+		m_lf.lfCharSet = (BYTE)_StrToInt(p + 1, 0);
 		m_bCharSet = true;
 	}
 	else {
@@ -1592,7 +1612,7 @@ bool CFontSubstituteData::init(LPCTSTR config)
 	}
 	if (p >= buf) {
 		StringCchCopy(lf.lfFaceName, countof(lf.lfFaceName), buf);
-		lf.lfCharSet = (BYTE)CGdippSettings::_StrToInt(p + 1, 0);
+		lf.lfCharSet = (BYTE)_StrToInt(p + 1, 0);
 		m_bCharSet = true;
 	} else {
 		StringCchCopy(lf.lfFaceName, LF_FACESIZE, buf);
